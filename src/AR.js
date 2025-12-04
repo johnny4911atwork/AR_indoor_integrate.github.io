@@ -1,5 +1,31 @@
+// 初始化模式選擇
+function initModeSelection() {
+    const modeSelection = document.getElementById('modeSelection');
+    const arInterface = document.getElementById('ar-interface');
+    const recordInterface = document.getElementById('record-interface');
+    const recordModeBtn = document.getElementById('recordModeBtn');
+    const replayModeBtn = document.getElementById('replayModeBtn');
 
-export function initRecordMode() {
+    // Simple mode switching logic
+    function startARMode(mode) {
+        console.log('Selected mode:', mode);
+        modeSelection.style.display = 'none';
+        
+        if (mode === 'record') {
+            recordInterface.style.display = 'block';
+            initRecordMode();
+        } else {
+            arInterface.style.display = 'block';
+        }
+        
+        window.currentARMode = mode;
+    }
+
+    recordModeBtn.addEventListener('click', () => startARMode('record'));
+    replayModeBtn.addEventListener('click', () => startARMode('replay'));
+}
+
+function initRecordMode() {
     const video = document.getElementById('record-video');
     const captureBtn = document.getElementById('record-captureBtn');
     const canvas = document.getElementById('record-canvas');
@@ -677,4 +703,11 @@ async function initCamera(videoElement) {
         console.error('Camera initialization failed:', error);
         alert('無法開啟相機: ' + error.message);
     }
+}
+
+// 當 DOM 載入完成後初始化
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initModeSelection);
+} else {
+    initModeSelection();
 }
