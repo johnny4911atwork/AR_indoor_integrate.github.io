@@ -447,14 +447,14 @@ function trackObjectFrame(canvas, guidance, sourceCanvas, video) {
   if (!isTracking) return;
   
   try {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // 繪製相機畫面到 tracking canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0);
     
     // 計算畫面中心的對焦框
     const centerX = canvas.width / 2;
