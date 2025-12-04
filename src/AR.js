@@ -206,15 +206,12 @@ function startSelection(canvas, video) {
       selectionCtx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
       selectionCtx.drawImage(baseImage, 0, 0);
       
-      // 計算顯示座標
-      const displayWidth = endX - startX;
-      const displayHeight = endY - startY;
-      
       // 繪製選擇框（虛線）
       selectionCtx.strokeStyle = '#0400ffff';
       selectionCtx.lineWidth = 2;
       selectionCtx.setLineDash([5, 5]);
-      selectionCtx.strokeRect(startX, startY, displayWidth, displayHeight);
+      selectionCtx.strokeRect(Math.min(startX, endX), Math.min(startY, endY), 
+                              Math.abs(endX - startX), Math.abs(endY - startY));
       
       capturedImage.src = selectionCanvas.toDataURL('image/png');
     };
@@ -447,14 +444,14 @@ function trackObjectFrame(canvas, guidance, sourceCanvas, video) {
   if (!isTracking) return;
   
   try {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
     
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // 繪製相機畫面到 tracking canvas
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     // 計算畫面中心的對焦框
     const centerX = canvas.width / 2;
