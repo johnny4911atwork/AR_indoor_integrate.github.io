@@ -183,36 +183,6 @@
         <canvas id="target-canvas" style="max-width: 150px; max-height: 150px;"></canvas>
     </div>
 
-    <script type="module">
-        import { initRecordMode } from './src/AR.js';
-
-        const modeSelection = document.getElementById('modeSelection');
-        const arInterface = document.getElementById('ar-interface');
-        const recordInterface = document.getElementById('record-interface');
-        const recordModeBtn = document.getElementById('recordModeBtn');
-        const replayModeBtn = document.getElementById('replayModeBtn');
-
-        // Simple mode switching logic
-        function startARMode(mode) {
-            console.log('Selected mode:', mode);
-            modeSelection.style.display = 'none';
-            
-            if (mode === 'record') {
-                recordInterface.style.display = 'block';
-                initRecordMode();
-            } else {
-                arInterface.style.display = 'block';
-            }
-            
-            window.currentARMode = mode;
-        }
-
-        recordModeBtn.addEventListener('click', () => startARMode('record'));
-        replayModeBtn.addEventListener('click', () => startARMode('replay'));
-    </script>
-
     <script type="module" src="src/AR.js"></script>
 </body>
 </html>
-
-
