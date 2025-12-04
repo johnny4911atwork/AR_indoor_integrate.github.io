@@ -453,11 +453,15 @@ function trackObjectFrame(canvas, guidance, sourceCanvas, video) {
     // 繪製相機畫面到 tracking canvas
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
+    // 計算縮放比例 (Video -> Screen)
+    const scaleX = canvas.width / video.videoWidth;
+    const scaleY = canvas.height / video.videoHeight;
+    
     // 計算畫面中心的對焦框
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
-    const focusWidth = referenceData.width;
-    const focusHeight = referenceData.height;
+    const focusWidth = referenceData.width * scaleX;
+    const focusHeight = referenceData.height * scaleY;
     const focusX = centerX - focusWidth / 2;
     const focusY = centerY - focusHeight / 2;
     
@@ -484,7 +488,7 @@ function trackObjectFrame(canvas, guidance, sourceCanvas, video) {
       lastDetectionTime = currentTime;
       
       // 使用HSV色彩空間進行物件偵測
-      const detected = detectObjectInFrame(ctx);
+      const detected = detectObjectInFrame(ctx, focusX, focusY, focusWidth, focusHeight);
       
       if (detected) {
         const confidence = detected.confidence || 0;
@@ -529,21 +533,13 @@ function trackObjectFrame(canvas, guidance, sourceCanvas, video) {
 }
 
 // 在當前畫面中偵測物件（只檢查對焦框內的區域，使用HSV色彩空間）
-function detectObjectInFrame(ctx) {
+function detectObjectInFrame(ctx, x, y, width, height) {
   if (!referenceData || !referenceData.imageData) return null;
   
   const template = referenceData.imageData;
-  const templateWidth = template.width;
-  const templateHeight = template.height;
-  
-  // 計算畫面中心的對焦框位置
-  const centerX = ctx.canvas.width / 2;
-  const centerY = ctx.canvas.height / 2;
-  const focusX = Math.floor(centerX - templateWidth / 2);
-  const focusY = Math.floor(centerY - templateHeight / 2);
   
   // 只檢查對焦框內的區域
-  const focusRegion = ctx.getImageData(focusX, focusY, templateWidth, templateHeight);
+  const focusRegion = ctx.getImageData(x, y, width, height);
   
   // 提取模板和對焦區域的HSV特徵（忽略明度V）
   const templateHSV = getAverageHS(template);
@@ -561,10 +557,10 @@ function detectObjectInFrame(ctx) {
   const confidence = Math.max(0, 100 - diff * 400);
   
   return {
-    x: focusX,
-    y: focusY,
-    width: templateWidth,
-    height: templateHeight,
+    x: x,
+    y: y,
+    width: width,
+    height: height,
     confidence: confidence
   };
 }
