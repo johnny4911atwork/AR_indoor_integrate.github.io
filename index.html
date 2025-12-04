@@ -149,6 +149,7 @@
     <!-- Record Mode Interface -->
     <div id="record-interface" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 1500;">
         <video id="record-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+        <canvas id="record-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
         <button id="record-captureBtn" style="
             position: absolute; 
             bottom: 30px; 
@@ -213,4 +214,5 @@
     <script type="module" src="src/AR.js"></script>
 </body>
 </html>
+
 
