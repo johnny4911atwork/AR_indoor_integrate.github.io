@@ -749,39 +749,6 @@ function hsvDifference(hsv1, hsv2) {
   return hDiff * 0.7 + sDiff * 0.3;
 }
 
-async function initCamera(videoElement) {
-    try {
-        // Try to use the rear camera first
-        let constraints = {
-            video: { 
-                facingMode: { exact: "environment" },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 }
-            }
-        };
-        
-        let stream;
-        try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-        } catch (err) {
-            console.log('Rear camera not available, trying default camera...');
-            // Fallback to any available camera
-            constraints.video = {
-                width: { ideal: 1920 },
-                height: { ideal: 1080 }
-            };
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-        }
-        
-        videoElement.srcObject = stream;
-        console.log('Camera initialized successfully');
-        
-    } catch (error) {
-        console.error('Camera initialization failed:', error);
-        alert('無法開啟相機: ' + error.message);
-    }
-}
-
 // 當 DOM 載入完成後初始化
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initModeSelection);
