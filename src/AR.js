@@ -1,125 +1,62 @@
-const video = document.getElementById('camera');
-const canvas = document.getElementById('canvas');
-const overlay = document.getElementById('overlay');
-const captureBtn = document.getElementById('captureBtn');
-const loadBtn = document.getElementById('loadBtn');
-const saveBtn = document.getElementById('saveBtn');
-const trackBtn = document.getElementById('trackBtn');
-const guidance = document.getElementById('guidance');
-const selectionOverlay = document.getElementById('selection-overlay');
-const capturedImage = document.getElementById('captured-image');
-const confirmBtn = document.getElementById('confirmBtn');
-const fileInput = document.getElementById('fileInput');
 
-let stream = null;
-let targetObject = null;
-let isTracking = false;
-let referenceData = null;
-let lastDetectionTime = 0;
-const detectionInterval = 1000; // 每 1000ms (1秒) 偵測一次，降低 CPU 負擔
-let lastDetectedPosition = null; // 保存上次偵測結果，避免閃爍
+export function initRecordMode() {
+    const video = document.getElementById('record-video');
+    const captureBtn = document.getElementById('record-captureBtn');
+    const canvas = document.getElementById('record-canvas');
 
-// 初始化相機（支援 Webcam 和手機）
-async function initCamera() {
-  try {
-    // 先嘗試後鏡頭，失敗則使用預設相機
-    let constraints = {
-      video: { 
-        facingMode: { exact: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      }
-    };
-    
-    try {
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (err) {
-      // 如果後鏡頭失敗，使用任意相機（適用於電腦 Webcam）
-      console.log('後鏡頭不可用，使用預設相機');
-      constraints.video = {
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      };
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (!video || !captureBtn) {
+        console.error('Record mode elements not found');
+        return;
     }
-    
-    video.srcObject = stream;
-    
-    video.onloadedmetadata = () => {
-      overlay.width = video.videoWidth;
-      overlay.height = video.videoHeight;
-    };
-  } catch (error) {
-    alert('無法取用相機: ' + error.message);
-  }
+
+    initCamera(video);
+
+    captureBtn.addEventListener('click', () => {
+        if (!video.srcObject) return;
+        
+        // Set canvas size to match video resolution
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+        
+        startSelection(canvas, video);
+        
+        // Visual feedback
+        captureBtn.textContent = '已拍照!';
+        setTimeout(() => {
+            captureBtn.textContent = '拍照';
+        }, 1000);
+        
+        console.log('Photo captured to canvas');
+    });
 }
 
-// 載入圖檔按鈕
-loadBtn.addEventListener('click', () => {
-  fileInput.click();
-});
+// 全域變數
+let targetObject = null;
+let referenceData = null;
+let isTracking = false;
+let lastDetectionTime = 0;
+const detectionInterval = 1000; // 每 1000ms 偵測一次
 
-// 處理檔案載入
-fileInput.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        
-        // 直接使用整張圖片作為目標物件
-        targetObject = {
-          x: 0,
-          y: 0,
-          width: img.width,
-          height: img.height
-        };
-        
-        console.log('載入圖檔作為目標:', targetObject);
-        referenceData = extractFeatures(targetObject);
-        console.log('特徵提取完成:', referenceData);
-        
-        // 顯示目標物件在右上角
-        const targetDisplay = document.getElementById('target-display');
-        const targetCanvas = document.getElementById('target-canvas');
-        const targetCtx = targetCanvas.getContext('2d');
-        
-        targetCanvas.width = targetObject.width;
-        targetCanvas.height = targetObject.height;
-        targetCtx.drawImage(canvas, 0, 0);
-        targetDisplay.style.display = 'block';
-        
-        // 啟用追蹤和保存按鈕
-        trackBtn.disabled = false;
-        saveBtn.disabled = false;
-        
-        // 重置檔案輸入，允許重複載入相同檔案
-        fileInput.value = '';
-      };
-      img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
-  }
-});
-
-// 拍照功能
-captureBtn.addEventListener('click', () => {
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0);
-  startSelection();
-});
+// AR 相關全域變數
+let arSession = null;
+let arRefSpace = null;
+let arPerfectMatchTriggered = false;
 
 // 開始選擇目標物件
-function startSelection() {
+function startSelection(canvas, video) {
   // 儲存原始圖片
   const originalImageData = canvas.toDataURL('image/png');
+  
+  // 獲取必要的 DOM 元素
+  const capturedImage = document.getElementById('captured-image');
+  const selectionOverlay = document.getElementById('selection-overlay');
+  const confirmBtn = document.getElementById('confirmBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const targetDisplay = document.getElementById('target-display');
+  const targetCanvas = document.getElementById('target-canvas');
   
   // 建立選擇用的 canvas 和圖片
   let selectionCanvas = document.createElement('canvas');
@@ -269,15 +206,12 @@ function startSelection() {
       selectionCtx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
       selectionCtx.drawImage(baseImage, 0, 0);
       
-      // 計算顯示座標
-      const displayWidth = endX - startX;
-      const displayHeight = endY - startY;
-      
       // 繪製選擇框（虛線）
       selectionCtx.strokeStyle = '#0400ffff';
       selectionCtx.lineWidth = 2;
       selectionCtx.setLineDash([5, 5]);
-      selectionCtx.strokeRect(startX, startY, displayWidth, displayHeight);
+      selectionCtx.strokeRect(Math.min(startX, endX), Math.min(startY, endY), 
+                              Math.abs(endX - startX), Math.abs(endY - startY));
       
       capturedImage.src = selectionCanvas.toDataURL('image/png');
     };
@@ -315,15 +249,14 @@ function startSelection() {
     };
   }
   
+  // 確認按鈕
   confirmBtn.onclick = () => {
     if (targetObject) {
       console.log('確認選擇，開始提取特徵:', targetObject);
-      referenceData = extractFeatures(targetObject);
+      referenceData = extractFeatures(targetObject, canvas);
       console.log('特徵提取完成:', referenceData);
       
       // 顯示目標物件在右上角
-      const targetDisplay = document.getElementById('target-display');
-      const targetCanvas = document.getElementById('target-canvas');
       const targetCtx = targetCanvas.getContext('2d');
       
       targetCanvas.width = targetObject.width;
@@ -333,105 +266,203 @@ function startSelection() {
       targetDisplay.style.display = 'block';
       
       selectionOverlay.style.display = 'none';
-      trackBtn.disabled = false;
-      saveBtn.disabled = false;
+      
+      // 隱藏相機和拍照按鈕，開始追蹤
+      setTimeout(() => {
+        startTrackingMode(canvas, video);
+      }, 500);
     } else {
       alert('請先框選一個物件區域');
     }
   };
-}
-
-// 保存目標圖檔
-saveBtn.addEventListener('click', () => {
-  if (!targetObject || !canvas) {
-    alert('請先選擇目標物件！');
-    return;
-  }
   
-  // 建立臨時 canvas 來儲存目標區域
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = targetObject.width;
-  tempCanvas.height = targetObject.height;
-  const tempCtx = tempCanvas.getContext('2d');
-  
-  // 繪製目標區域
-  tempCtx.drawImage(canvas, 
-    targetObject.x, targetObject.y, targetObject.width, targetObject.height,
-    0, 0, targetObject.width, targetObject.height);
-  
-  // 下載圖片
-  tempCanvas.toBlob((blob) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `target_${Date.now()}.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  });
-});
-
-// 提取特徵（簡化版）
-function extractFeatures(region) {
-  const ctx = canvas.getContext('2d');
-  const imageData = ctx.getImageData(region.x, region.y, region.width, region.height);
-  
-  console.log('提取特徵 - region:', region);
-  console.log('提取特徵 - imageData:', imageData);
-  
-  return {
-    region: region,
-    centerX: region.x + region.width / 2,
-    centerY: region.y + region.height / 2,
-    imageData: imageData
+  // 取消按鈕
+  cancelBtn.onclick = () => {
+    selectionOverlay.style.display = 'none';
   };
 }
 
-// 開始追蹤
-trackBtn.addEventListener('click', () => {
-  console.log('點擊追蹤按鈕, 當前 isTracking:', isTracking);
-  console.log('referenceData:', referenceData);
+// 特徵提取：從裁切的目標物件提取特徵
+function extractFeatures(region, sourceCanvas) {
+  try {
+    // 從主 canvas 中提取目標區域的影像資料
+    const sourceCtx = sourceCanvas.getContext('2d');
+    const imageData = sourceCtx.getImageData(region.x, region.y, region.width, region.height);
+    
+    return {
+      x: region.x,
+      y: region.y,
+      width: region.width,
+      height: region.height,
+      imageData: imageData
+    };
+  } catch (error) {
+    console.error('特徵提取失敗:', error);
+    return null;
+  }
+}
+
+// 啟動 AR 模式
+async function startArMode() {
+  console.log('啟動 AR 模式...');
+
+  // 停止追蹤並清理介面
+  isTracking = false;
+  const trackingCanvas = document.getElementById('tracking-canvas');
+  if (trackingCanvas) trackingCanvas.remove();
   
-  if (!referenceData) {
-    alert('請先拍照並選擇目標物件！');
+  const guidance = document.getElementById('guidance');
+  if (guidance) guidance.remove();
+  
+  const stopBtn = document.getElementById('stop-tracking-btn');
+  if (stopBtn) stopBtn.remove();
+  
+  if (arPerfectMatchTriggered) {
+    console.log('AR 已啟動，忽略重複請求');
     return;
   }
   
-  isTracking = !isTracking;
-  trackBtn.textContent = isTracking ? '⏸ 停止追蹤' : '🎯 開始追蹤';
+  arPerfectMatchTriggered = true;
   
-  console.log('設定 isTracking 為:', isTracking);
+  try {
+    // 檢查 WebXR 支援
+    if (!navigator.xr) {
+      console.error('WebXR 不支援');
+      return;
+    }
+    
+    // 檢查 AR 支援
+    const supported = await navigator.xr.isSessionSupported('immersive-ar');
+    if (!supported) {
+      console.error('AR 模式不支援');
+      return;
+    }
+    
+    console.log('要求 AR 會話...');
+    arSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['dom-overlay'],
+      domOverlay: { root: document.getElementById('container') },
+      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers']
+    });
+    
+    console.log('AR 會話已建立');
+    
+    // 嘗試不同的參考空間
+    try {
+      console.log('嘗試 viewer 參考空間...');
+      arRefSpace = await arSession.requestReferenceSpace('viewer');
+      console.log('使用 viewer 參考空間');
+    } catch (e) {
+      console.log('viewer 失敗，嘗試 local-floor...');
+      try {
+        arRefSpace = await arSession.requestReferenceSpace('local-floor');
+        console.log('使用 local-floor 參考空間');
+      } catch (e2) {
+        console.log('local-floor 失敗，嘗試 local...');
+        try {
+          arRefSpace = await arSession.requestReferenceSpace('local');
+          console.log('使用 local 參考空間');
+        } catch (e3) {
+          console.log('local 失敗，嘗試 unbounded...');
+          arRefSpace = await arSession.requestReferenceSpace('unbounded');
+          console.log('使用 unbounded 參考空間');
+        }
+      }
+    }
+    
+    // 設定 AR 會話結束事件
+    arSession.addEventListener('end', () => {
+      console.log('AR 會話已結束');
+      arSession = null;
+      arRefSpace = null;
+      arPerfectMatchTriggered = false;
+    });
+    
+    console.log('AR 模式啟動成功！');
+    
+  } catch (err) {
+    console.error('AR 啟動失敗:', err.message);
+    arPerfectMatchTriggered = false;
+  }
+}
+
+// 開始追蹤模式
+function startTrackingMode(sourceCanvas, video) {
+  const recordInterface = document.getElementById('record-interface');
+  const overlay = document.getElementById('record-overlay');
   
-  if (isTracking) {
-    console.log('開始追蹤...');
-    trackObject();
-  } else {
-    // 清除 overlay
+  // 設定 overlay 尺寸為 video 原始解析度
+  overlay.width = video.videoWidth;
+  overlay.height = video.videoHeight;
+  
+  // 建立引導文字
+  const guidance = document.createElement('div');
+  guidance.id = 'guidance';
+  guidance.style.position = 'fixed';
+  guidance.style.top = '20px';
+  guidance.style.left = '50%';
+  guidance.style.transform = 'translateX(-50%)';
+  guidance.style.background = 'rgba(0, 0, 0, 0.8)';
+  guidance.style.color = 'white';
+  guidance.style.padding = '15px 25px';
+  guidance.style.borderRadius = '10px';
+  guidance.style.zIndex = '1600';
+  guidance.style.display = 'block';
+  guidance.textContent = '開始追蹤...';
+  recordInterface.appendChild(guidance);
+  
+  // 建立停止追蹤按鈕
+  const stopBtn = document.createElement('button');
+  stopBtn.id = 'stop-tracking-btn';
+  stopBtn.textContent = '⏹ 停止追蹤';
+  stopBtn.style.position = 'fixed';
+  stopBtn.style.bottom = '30px';
+  stopBtn.style.left = '50%';
+  stopBtn.style.transform = 'translateX(-50%)';
+  stopBtn.style.padding = '15px 30px';
+  stopBtn.style.fontSize = '18px';
+  stopBtn.style.background = '#f44336';
+  stopBtn.style.color = 'white';
+  stopBtn.style.border = 'none';
+  stopBtn.style.borderRadius = '25px';
+  stopBtn.style.cursor = 'pointer';
+  stopBtn.style.zIndex = '1600';
+  stopBtn.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+  recordInterface.appendChild(stopBtn);
+  
+  isTracking = true;
+  
+  stopBtn.addEventListener('click', () => {
+    isTracking = false;
     const ctx = overlay.getContext('2d');
     ctx.clearRect(0, 0, overlay.width, overlay.height);
-    guidance.style.display = 'none';
-  }
-});
+    guidance.remove();
+    stopBtn.remove();
+    console.log('追蹤已停止');
+  });
+  
+  // 開始追蹤迴圈
+  trackObjectFrame(overlay, guidance, sourceCanvas, video);
+}
 
-// 追蹤物件並提供引導
-function trackObject() {
+function trackObjectFrame(overlay, guidance, sourceCanvas, video) {
   if (!isTracking) return;
   
   try {
     const ctx = overlay.getContext('2d');
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const canvasCtx = canvas.getContext('2d');
+    // 將當前 video 畫面繪製到 sourceCanvas（保持原始解析度）
+    sourceCanvas.width = video.videoWidth;
+    sourceCanvas.height = video.videoHeight;
+    const canvasCtx = sourceCanvas.getContext('2d');
     canvasCtx.drawImage(video, 0, 0);
     
-    // 計算畫面中心的對焦框
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const focusWidth = referenceData.region.width;
-    const focusHeight = referenceData.region.height;
+    // 計算畫面中心的對焦框（使用原始解析度）
+    const centerX = sourceCanvas.width / 2;
+    const centerY = sourceCanvas.height / 2;
+    const focusWidth = referenceData.width;
+    const focusHeight = referenceData.height;
     const focusX = centerX - focusWidth / 2;
     const focusY = centerY - focusHeight / 2;
     
@@ -447,75 +478,69 @@ function trackObject() {
     ctx.lineTo(centerX + 20, centerY);
     ctx.moveTo(centerX, centerY - 20);
     ctx.lineTo(centerX, centerY + 20);
-    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
     ctx.setLineDash([]);
+    ctx.stroke();
     
     // 頻率控制：每 detectionInterval ms 偵測一次
     const currentTime = Date.now();
     if (currentTime - lastDetectionTime >= detectionInterval) {
       lastDetectionTime = currentTime;
       
-      // 偵測物件（簡化：只回傳是否匹配）
-      lastDetectedPosition = detectObjectInFrame(canvasCtx);
-    }
-    
-    // 根據偵測結果顯示提示
-    if (lastDetectedPosition) {
-      const confidence = lastDetectedPosition.confidence || 0;
+      // 使用HSV色彩空間進行物件偵測
+      const detected = detectObjectInFrame(canvasCtx, focusX, focusY, focusWidth, focusHeight);
       
-      // 根據信心度改變對焦框顏色和粗細
-      if (confidence > 80) {
-        ctx.strokeStyle = '#00ff00';  // 綠色
-        ctx.lineWidth = 4;
-        guidance.textContent = `✅ 完美對齊！(信心度: ${Math.round(confidence)}%)`;
-        guidance.style.background = 'rgba(0, 200, 0, 0.9)';
-      } else if (confidence > 40) {
-        ctx.strokeStyle = '#ffff00';  // 黃色
-        ctx.lineWidth = 3;
-        guidance.textContent = `⚠️ 可能是目標 (信心度: ${Math.round(confidence)}%)`;
-        guidance.style.background = 'rgba(200, 200, 0, 0.9)';
+      if (detected) {
+        const confidence = detected.confidence || 0;
+        
+        if (confidence > 80) {
+          ctx.strokeStyle = '#00ff00';  // 綠色
+          ctx.lineWidth = 4;
+          guidance.textContent = `✅ 完美對齊！(信心度: ${Math.round(confidence)}%) - 啟動 AR...`;
+          guidance.style.background = 'rgba(0, 200, 0, 0.9)';
+          
+          // 啟動 AR 模式
+          if (!arPerfectMatchTriggered) {
+            startArMode();
+          }
+        } else if (confidence > 40) {
+          ctx.strokeStyle = '#ffff00';  // 黃色
+          ctx.lineWidth = 3;
+          guidance.textContent = `⚠️ 可能是目標 (信心度: ${Math.round(confidence)}%)`;
+          guidance.style.background = 'rgba(200, 200, 0, 0.9)';
+        } else {
+          ctx.strokeStyle = '#ff9900';  // 橘色
+          ctx.lineWidth = 3;
+          guidance.textContent = `⚠️ 不太確定 (信心度: ${Math.round(confidence)}%)`;
+          guidance.style.background = 'rgba(200, 100, 0, 0.9)';
+        }
+        
+        ctx.setLineDash([]);
+        ctx.strokeRect(focusX, focusY, focusWidth, focusHeight);
       } else {
-        ctx.strokeStyle = '#ff9900';  // 橘色
-        ctx.lineWidth = 3;
-        guidance.textContent = `⚠️ 不太確定 (信心度: ${Math.round(confidence)}%)`;
-        guidance.style.background = 'rgba(200, 100, 0, 0.9)';
+        guidance.textContent = '⚠️ 未偵測到目標 - 請移動相機對準目標物體';
+        guidance.style.background = 'rgba(200, 0, 0, 0.8)';
       }
-      
-      ctx.strokeRect(focusX, focusY, focusWidth, focusHeight);
-      guidance.style.display = 'block';
-      
-    } else {
-      guidance.textContent = '⚠️ 未偵測到目標 - 請移動相機對準目標物體';
-      guidance.style.display = 'block';
-      guidance.style.background = 'rgba(200, 0, 0, 0.8)';
     }
     
   } catch (error) {
     console.error('追蹤錯誤:', error);
     guidance.textContent = '⚠️ 追蹤錯誤: ' + error.message;
-    guidance.style.display = 'block';
     guidance.style.background = 'rgba(200, 0, 0, 0.8)';
   }
   
-  requestAnimationFrame(trackObject);
+  requestAnimationFrame(() => trackObjectFrame(overlay, guidance, sourceCanvas, video));
 }
 
 // 在當前畫面中偵測物件（只檢查對焦框內的區域，使用HSV色彩空間）
-function detectObjectInFrame(ctx) {
+function detectObjectInFrame(ctx, x, y, width, height) {
   if (!referenceData || !referenceData.imageData) return null;
   
   const template = referenceData.imageData;
-  const templateWidth = template.width;
-  const templateHeight = template.height;
-  
-  // 計算畫面中心的對焦框位置
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
-  const focusX = Math.floor(centerX - templateWidth / 2);
-  const focusY = Math.floor(centerY - templateHeight / 2);
   
   // 只檢查對焦框內的區域
-  const focusRegion = ctx.getImageData(focusX, focusY, templateWidth, templateHeight);
+  const focusRegion = ctx.getImageData(x, y, width, height);
   
   // 提取模板和對焦區域的HSV特徵（忽略明度V）
   const templateHSV = getAverageHS(template);
@@ -533,10 +558,10 @@ function detectObjectInFrame(ctx) {
   const confidence = Math.max(0, 100 - diff * 400);
   
   return {
-    x: focusX,
-    y: focusY,
-    width: templateWidth,
-    height: templateHeight,
+    x: x,
+    y: y,
+    width: width,
+    height: height,
     confidence: confidence
   };
 }
@@ -621,5 +646,35 @@ function hsvDifference(hsv1, hsv2) {
   return hDiff * 0.7 + sDiff * 0.3;
 }
 
-// 初始化
-initCamera();
+async function initCamera(videoElement) {
+    try {
+        // Try to use the rear camera first
+        let constraints = {
+            video: { 
+                facingMode: { exact: "environment" },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            }
+        };
+        
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err) {
+            console.log('Rear camera not available, trying default camera...');
+            // Fallback to any available camera
+            constraints.video = {
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            };
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+        }
+        
+        videoElement.srcObject = stream;
+        console.log('Camera initialized successfully');
+        
+    } catch (error) {
+        console.error('Camera initialization failed:', error);
+        alert('無法開啟相機: ' + error.message);
+    }
+}
