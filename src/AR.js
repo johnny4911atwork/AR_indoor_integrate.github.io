@@ -1,4 +1,24 @@
-// 初始化模式選擇
+// ============================================
+// 全域變數
+// ============================================
+let targetObject = null;
+let referenceData = null;
+let isTracking = false;
+let lastDetectionTime = 0;
+const detectionInterval = 1000; // 每 1000ms 偵測一次
+
+// AR 相關全域變數
+let arSession = null;
+let arRefSpace = null;
+let arPerfectMatchTriggered = false;
+
+// ============================================
+// 初始化與模式選擇
+// ============================================
+
+/**
+ * 初始化模式選擇界面
+ */
 function initModeSelection() {
     const modeSelection = document.getElementById('modeSelection');
     const arInterface = document.getElementById('ar-interface');
@@ -6,7 +26,6 @@ function initModeSelection() {
     const recordModeBtn = document.getElementById('recordModeBtn');
     const replayModeBtn = document.getElementById('replayModeBtn');
 
-    // Simple mode switching logic
     function startARMode(mode) {
         console.log('Selected mode:', mode);
         modeSelection.style.display = 'none';
@@ -25,6 +44,9 @@ function initModeSelection() {
     replayModeBtn.addEventListener('click', () => startARMode('replay'));
 }
 
+/**
+ * 初始化錄製模式
+ */
 function initRecordMode() {
     const video = document.getElementById('record-video');
     const captureBtn = document.getElementById('record-captureBtn');
@@ -40,7 +62,6 @@ function initRecordMode() {
     captureBtn.addEventListener('click', () => {
         if (!video.srcObject) return;
         
-        // Set canvas size to match video resolution
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         
@@ -49,7 +70,7 @@ function initRecordMode() {
         
         startSelection(canvas, video);
         
-        // Visual feedback
+        // 視覺回饋
         captureBtn.textContent = '已拍照!';
         setTimeout(() => {
             captureBtn.textContent = '拍照';
@@ -59,17 +80,43 @@ function initRecordMode() {
     });
 }
 
-// 全域變數
-let targetObject = null;
-let referenceData = null;
-let isTracking = false;
-let lastDetectionTime = 0;
-const detectionInterval = 1000; // 每 1000ms 偵測一次
+/**
+ * 初始化相機
+ */
+async function initCamera(videoElement) {
+    try {
+        let constraints = {
+            video: { 
+                facingMode: { exact: "environment" },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            }
+        };
+        
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err) {
+            console.log('Rear camera not available, trying default camera...');
+            constraints.video = {
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            };
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+        }
+        
+        videoElement.srcObject = stream;
+        console.log('Camera initialized successfully');
+        
+    } catch (error) {
+        console.error('Camera initialization failed:', error);
+        alert('無法開啟相機: ' + error.message);
+    }
+}
 
-// AR 相關全域變數
-let arSession = null;
-let arRefSpace = null;
-let arPerfectMatchTriggered = false;
+// ============================================
+// 目標選擇與特徵提取
+// ============================================
 
 // 開始選擇目標物件
 function startSelection(canvas, video) {
@@ -343,6 +390,21 @@ async function startArMode() {
   const stopBtn = document.getElementById('stop-tracking-btn');
   if (stopBtn) stopBtn.remove();
   
+  // 隱藏拍照按鈕
+  const captureBtn = document.getElementById('record-captureBtn');
+  if (captureBtn) {
+    captureBtn.style.display = 'none';
+    console.log('已隱藏拍照按鈕');
+  }
+  
+  // 清除準星和對焦框
+  const overlay = document.getElementById('record-overlay');
+  if (overlay) {
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    console.log('已清除準星和對焦框');
+  }
+  
   if (arPerfectMatchTriggered) {
     console.log('AR 已啟動，忽略重複請求');
     return;
@@ -402,6 +464,21 @@ async function startArMode() {
       arSession = null;
       arRefSpace = null;
       arPerfectMatchTriggered = false;
+      
+      // 恢復拍照按鈕
+      const captureBtn = document.getElementById('record-captureBtn');
+      if (captureBtn) {
+        captureBtn.style.display = 'block';
+        console.log('已恢復拍照按鈕');
+      }
+      
+      // 重新啟動追蹤模式以恢復準星和對焦框
+      const video = document.getElementById('record-video');
+      const canvas = document.getElementById('record-canvas');
+      if (video && canvas && referenceData) {
+        console.log('重新啟動追蹤模式...');
+        startTrackingMode(canvas, video);
+      }
     });
     
     console.log('AR 模式啟動成功！');
